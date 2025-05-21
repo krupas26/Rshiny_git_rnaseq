@@ -49,13 +49,6 @@ ui <- fluidPage(
   tags$head(
     tags$title("RNA-Seq Analysis"), #window title
     tags$style(HTML("
-      .title-container {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        width: 100%;
-        padding: 20px;
-      }
       .title-text {
         font-size: 36px; 
         font-weight: bold;
@@ -67,8 +60,7 @@ ui <- fluidPage(
       }
     "))),
   
-    div(class = "title-container",
-        img(src = "rna_seq_logo.png", class = "title-img"),  
+    div(class = "title-container", 
         h4("RNA-Seq Analysis", class = "title-text"),     
         img(src = "rna_logo.png", class = "title-img") 
     ),
