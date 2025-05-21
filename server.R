@@ -502,7 +502,7 @@ server <- function(input, output, session) {
     
     ercc_file_name <- "ercc_analysis.txt" 
     erccPath <- "data/"
-    ercc_file_path <- file.path(erccPath, ercc_file_name)"
+    ercc_file_path <- file.path(erccPath, ercc_file_name)
     dilution_factor <- as.numeric(input$ercc_dilution)
     ercc_info <- prepare_ercc_info(ercc_file_path, dilution_factor)
     
