@@ -1,0 +1,34 @@
+name: shiny
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - r-base=4.3.1
+  - r-tidyverse
+  - r-readxl
+  - r-ggplot2
+  - bioconductor-deseq2
+  - bioconductor-annotationdbi
+  - bioconductor-org.hs.eg.db
+  - r-pheatmap
+  - r-magrittr
+  - bioconductor-genomicfeatures
+  - bioconductor-vsn
+  - r-viridis
+  - bioconductor-genefilter
+  - bioconductor-ensdb.hsapiens.v86
+  - bioconductor-clusterprofiler
+  - bioconductor-enrichplot
+  - r-patchwork
+  - bioconductor-fgsea
+  - r-shiny
+  - r-bslib
+  - r-plotly
+  - r-colourpicker
+  - r-rcolorbrewer
+  - r-dt
+  - r-igraph
+  - r-shinycssloaders
+  - r-shinywidgets
+  - r-msigdbr
