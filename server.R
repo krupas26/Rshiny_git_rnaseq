@@ -7,6 +7,14 @@
 
 source('functions.R')
 
+#list of required packages
+required_packages <- c("tidyverse", "DESeq2", "AnnotationDbi", "org.Hs.eg.db", 
+                       "pheatmap", "magrittr", "GenomicFeatures", "vsn", 
+                       "viridis", "genefilter", "EnsDb.Hsapiens.v86", 
+                       "clusterProfiler", "enrichplot", "patchwork", "fgsea",
+                       "RUVSeq")
+install_and_load(required_packages)
+
 set.seed(627)
 #-----------------------------Libraries-----------------------------------------
 #import necessary libraries
@@ -15,6 +23,7 @@ library(readxl)
 library(ggplot2)
 library(ggrepel)
 library(DESeq2)
+library(RUVSeq)
 library(AnnotationDbi)
 library(org.Hs.eg.db)
 library(pheatmap)
@@ -30,13 +39,6 @@ library(patchwork)
 library(fgsea)
 library(grid)
 library(gridGraphics)
-
-#list of required packages
-required_packages <- c("tidyverse", "DESeq2", "AnnotationDbi", "org.Hs.eg.db", 
-                       "pheatmap", "magrittr", "GenomicFeatures", "vsn", 
-                       "viridis", "genefilter", "EnsDb.Hsapiens.v86", 
-                       "clusterProfiler", "enrichplot", "patchwork", "fgsea")
-install_and_load(required_packages)
 
 #-------------------------------SERVER------------------------------------------
 server <- function(input, output, session) {
@@ -338,6 +340,92 @@ server <- function(input, output, session) {
     return(counts_matrix)
   })
   
+  # ----- RUVSeq ---
+  #filter counts data for ruvseq
+  filter_ruv <- reactive({
+    req(input$ruv_norm)
+    req(filtered_counts_sub(), filtered_metadata(), selected_condition_column(), input$ruv_filter_slider, input$ruv_sample_slider)
+    
+    counts_sub <- subset(filtered_counts_sub())
+    metadata_sub <- filtered_metadata()
+    conditionCol <- selected_condition_column()
+    counts_to_filter <- as.numeric(input$ruv_filter_slider)
+    samples_counts_filter <- as.numeric(input$ruv_sample_slider)
+    
+    metadata_sub[[conditionCol]] <- factor(metadata_sub[[conditionCol]])
+    #filter out non-expressing genes - 
+    filter_ruv <- apply(counts_sub[-1], 1, function(x) length(x [ x > counts_to_filter]) >= samples_counts_filter)
+    filtered_counts_ruv <- counts_sub[filter_ruv, ]
+    
+    print(head(filtered_counts_ruv))
+    
+    #set rownames as Geneid column
+    rownames(filtered_counts_ruv) <- filtered_counts_ruv$Geneid
+    
+    return(filtered_counts_ruv)
+  })
+  
+  names_ruv <- reactive({ 
+    req(filter_ruv())
+    
+    ruv_filtered_counts <- filter_ruv()
+    column <- if ('Geneid' %in% colnames(ruv_filtered_counts)) {
+      print("Using Geneid column-")
+      ruv_filtered_counts$Geneid
+    } else {
+      print("Using rownames-")
+      rownames(ruv_filtered_counts)
+    }
+    
+    #extract gene ids 
+    genes_ruv <- column[grepl("ENSG", column)]
+    print(head(genes_ruv))
+    
+    #extract spike in gene id
+    spikes_ruv <- column[grepl("ERCC", column)]
+    print(head(spikes_ruv))
+    
+    #return list
+    list(genes = genes_ruv, spikes = spikes_ruv)
+  })
+  
+  prepare_ruv_obj <- reactive({
+    req(filter_ruv(), names_ruv(), filtered_metadata(), selected_condition_column())
+    
+    ruv_filtered_counts <- filter_ruv()
+    ruv_matrix <- as.matrix(ruv_filtered_counts[-1])
+    rownames(ruv_matrix) <- ruv_filtered_counts$Geneid
+    metadata_sub <- filtered_metadata()
+    sample_col <- metadata_sub$sample_id
+    condition_col <- metadata_sub[[selected_condition_column()]]
+    set_ruv <- newSeqExpressionSet(as.matrix(ruv_matrix),
+                                   phenoData = data.frame(condition = condition_col, 
+                                                          row.names = sample_col))
+    print(set_ruv)
+    
+    return(set_ruv)
+  })
+  
+  run_ruvseq <- reactive({
+    req(names_ruv(), prepare_ruv_obj(), input$ruv_k)
+    
+    set_ruv <- prepare_ruv_obj()
+    spikes <- names_ruv()$spikes
+    
+    set_ruv <- betweenLaneNormalization(set_ruv, which = "upper")
+    
+    set1_ruv <- RUVg(set_ruv, spikes, k = input$ruv_k)
+    print(pData(set1_ruv))
+    
+    return(set1_ruv)
+  })
+  
+  observeEvent(input$ruv_norm, {
+    req(filter_ruv(), names_ruv(), prepare_ruv_obj(), run_ruvseq())
+    print("RUV normalization triggered")
+  })
+  
+
   #library size plot
   get_library_sizes <- reactive({
     req(get_counts_matrix())
@@ -361,7 +449,6 @@ server <- function(input, output, session) {
     
     pca_results <- prcomp(t(counts_sub[-1]), center=TRUE)
     
-    #if(!"condition" %in% colnames(metadata_sub)) {
     if (!conditionCol %in% colnames(metadata_sub)) {
       showNotification("The selected `condition` column is missing from the metadata. Please select all required columns before proceeding.")
       return()
@@ -501,8 +588,9 @@ server <- function(input, output, session) {
     head(fpkm_spike)
     
     ercc_file_name <- "ercc_analysis.txt" 
-    erccPath <- "data/"
+    erccPath <- "/mount/eagen/krupa/rnaseq/AnalysisR/"
     ercc_file_path <- file.path(erccPath, ercc_file_name)
+    #ercc_file_path <- "/mount/eagen/krupa/rnaseq/AnalysisR/ercc_analysis.txt"
     dilution_factor <- as.numeric(input$ercc_dilution)
     ercc_info <- prepare_ercc_info(ercc_file_path, dilution_factor)
     
@@ -575,19 +663,41 @@ server <- function(input, output, session) {
                 width_id = width_id, height_id = height_id))
   }
 
-  #function to create a download handler for the plots
+  # #function to create a download handler for the plots
   createDownloadHandler_plots <- function(plot_id, plot_function, data_function, output, input, session, ids) {
     output[[ids$download_id]] <- downloadHandler(
       filename = function() {
-        paste0(input[[ids$filename_id]], '.', input[[ids$filetype_id]])
+        paste0(input[[ids$filename_id]], ".", input[[ids$filetype_id]])
       },
       content = function(file) {
-        data <- data_function()
-        static_plot <- if (is.list(data)) do.call(plot_function, data) else plot_function(data, plotly = FALSE)
-        ggsave(file, static_plot, width = input[[ids$width_id]], height = input[[ids$height_id]], dpi = 300, device = input[[ids$filetype_id]])
+        args <- data_function()
+        
+        #check if the function returns a static (ggplot) object 
+        maybe_gg <- if (is.list(args)) do.call(plot_function, args) else plot_function(args, plotly = FALSE)
+  
+        if (inherits(maybe_gg, "ggplot")) {
+          ggsave(file, maybe_gg, width = input[[ids$width_id]], height = input[[ids$height_id]], dpi = 300, units = "in", device   = input[[ids$filetype_id]])
+
+          #otherwise assume it’s base-graphics: open device, draw, close
+        } else {
+          w    <- input[[ids$width_id]]
+          h    <- input[[ids$height_id]]
+          type <- input[[ids$filetype_id]]
+          
+          if (type == "png") {
+            png(file, width = w, height = h, units = "in", res = 300)
+          } else {
+            pdf(file, width = w, height = h)
+          }
+          
+          if (is.list(args)) do.call(plot_function, args) else plot_function(args, plotly = FALSE)
+          
+          dev.off()
+        }
       }
     )
   }
+
   
   #----------------------------Output-------------------------------------------
   #output for `sample_selector`
@@ -603,6 +713,27 @@ server <- function(input, output, session) {
             actionButton("submit_samples", "Submit Selected Samples"))
   })
   
+  output$ruvseq_ui <- renderUI({
+    req(input$submit_samples)
+    
+    tagList(
+      #RUVg normalization for ERCC spike ins
+      checkboxInput("ruvseq", "Normalize data using RUVSeq?", value = TRUE),
+      conditionalPanel(condition="input.ruvseq == true", 
+                       div(
+                         sliderInput("ruv_filter_slider", "Select the minimum number of counts required for a gene to be included in the analysis. Genes having total counts below this threshold will be filtered out.",
+                                     min = 0, max = 100, value = 5, step = 5),
+                         checkboxInput('ruv_filter_sample', "Include minimum no. of samples that contain the above threshold?", value = TRUE),
+                         conditionalPanel(
+                           condition = 'input.ruv_filter_sample = true',
+                           uiOutput('ruv_sample_filter')),
+                         p("Using RUVg method to normalize ERCC spike in genes."),
+                         numericInput("ruv_k", "Number of unwanted factors (k) to correct for:", value = 1),
+                         br(),
+                         actionButton("ruv_norm", "Normalize - RUVseq")
+                       )))
+    
+  })
   
   observeEvent(input$submit_samples, {
     req(input$submit_samples)
@@ -654,6 +785,13 @@ server <- function(input, output, session) {
     return(counts_sub)
   })
   
+  #output for sample filter
+  output$ruv_sample_filter <- renderUI({
+    req(input$filter_sample, filtered_metadata())
+    sliderInput('ruv_sample_slider', 'Select the minimum number of samples that should pass the above threshold.', 
+                min = 0, max = length(filtered_metadata()$sample_id), value = 2, step = 1)
+  })
+  
   #output for `summary_table`
   output$counts_summary_title <- renderUI({
     req(counts_summary_table())
@@ -697,11 +835,50 @@ server <- function(input, output, session) {
     showDownloadButton$sampleDist <- TRUE
     return(sample_dist_plot)
   })
-  #show download button for `sample_distribution` plot
+  
   sampleDist_ids <- createDownloadUI("sampleDist", output, input, session, showDownloadButton)
   createDownloadHandler_plots("sampleDist", plot_sample_distributions, 
                               data_function = get_counts_matrix, output, input, session, sampleDist_ids)
-
+  
+  #output for `rle_before_ruv` boxplot
+  showDownloadButton$rle_before_ruv <- FALSE
+  output$rle_before_ruv <- renderPlot({
+    req(prepare_ruv_obj(), selected_condition_column(), filtered_metadata())
+    set_ruv <- prepare_ruv_obj()
+    metadata_sub <- filtered_metadata()
+    conditionCol <- selected_condition_column()
+    
+    RLE_before <- make_rlePlot(data = set_ruv, metadata = metadata_sub, condition = conditionCol)
+    showDownloadButton$rle_before_ruv <- TRUE
+    return(RLE_before)
+  })
+  
+  rle_before_ids <- createDownloadUI("rle_before_ruv", output, input, session, showDownloadButton)
+  createDownloadHandler_plots("rle_before_ruv", make_rlePlot, 
+                              data_function = function() {
+                                list(data = prepare_ruv_obj(), metadata = filtered_metadata(), condition = selected_condition_column()) 
+                                }, output, input, session, rle_before_ids)
+  
+  #output for `rle_after_ruv` boxplot
+  showDownloadButton$rle_after_ruv <- FALSE
+  output$rle_after_ruv <- renderPlot({
+    req(run_ruvseq(), selected_condition_column(), filtered_metadata())
+    set1_ruv <- run_ruvseq()
+    metadata_sub <- filtered_metadata()
+    conditionCol <- selected_condition_column()
+    
+    RLE_after <- make_rlePlot(data = set1_ruv, metadata = metadata_sub, condition = conditionCol)
+    showDownloadButton$rle_after_ruv <- TRUE
+    return(RLE_after)
+  })
+  
+  rle_after_ids <- createDownloadUI("rle_after_ruv", output, input, session, showDownloadButton)
+  createDownloadHandler_plots("rle_after_ruv", make_rlePlot, 
+                              data_function = function() {
+                                list(data = run_ruvseq(), metadata = filtered_metadata(), condition = selected_condition_column()) 
+                              }, output, input, session, rle_after_ids)
+  
+  
   #output for distance heatmap
   showDownloadButton$dist_heatmap <- FALSE
   output$dist_heatmap <- renderPlot({
@@ -770,6 +947,25 @@ server <- function(input, output, session) {
     }
   )
   
+  #output for PCA plot before ruvseq
+  showDownloadButton$pca_before_ruv <- FALSE
+  output$pca_before_ruv <- renderPlot({
+    req(prepare_ruv_obj(), selected_condition_column(), filtered_metadata())
+    set_ruv <- prepare_ruv_obj()
+    metadata_sub <- filtered_metadata()
+    conditionCol <- selected_condition_column()
+    
+    pca_before_ruv <- make_pca_ruv(data = set_ruv, metadata = metadata_sub, condition = conditionCol)
+    showDownloadButton$pca_before_ruv <- TRUE
+    return(pca_before_ruv)
+  })
+  
+  pca_before_ruv_ids <- createDownloadUI('pca_before_ruv', output, input, session, showDownloadButton)
+  createDownloadHandler_plots('pca_before_ruv', make_pca_ruv,
+                              data_function = function() {
+                                list(prepare_ruv_obj(), filtered_metadata(), selected_condition_column())
+                              }, output, input, session, pca_before_ruv_ids)
+  
   #output for PCA plot using DESeq2
   showDownloadButton$deseq2_pcaPlot <- FALSE
   observeEvent(input$deseq2_pca, {
@@ -803,6 +999,26 @@ server <- function(input, output, session) {
                                 list(pca_data = pca_data, metadata = metadata_sub, condition = conditionCol, input$pc_x, input$pc_y)
                               }, output, input, session, deseq2_pcaPlot_ids)
   
+  #output for PCA plot after ruvseq
+  showDownloadButton$norm_pca_after_ruv <- FALSE
+  output$norm_pca_after_ruv <- renderPlot({
+    req(run_ruvseq(), selected_condition_column(), filtered_metadata())
+    set1_ruv <- run_ruvseq()
+    metadata_sub <- filtered_metadata()
+    conditionCol <- selected_condition_column()
+    
+    norm_pca_after_ruv <- make_pca_ruv(data = set1_ruv, metadata = metadata_sub, condition = conditionCol)
+    showDownloadButton$norm_pca_after_ruv <- TRUE
+    return(norm_pca_after_ruv)
+  })
+  
+  norm_pca_after_ruv_ids <- createDownloadUI('norm_pca_after_ruv', output, input, session, showDownloadButton)
+  createDownloadHandler_plots('norm_pca_after_ruv', make_pca_ruv,
+                              data_function = function(){
+                                list(run_ruvseq(), filtered_metadata(), selected_condition_column())
+                              }, output, input, session, norm_pca_after_ruv_ids)
+  
+  
   #output for normalized PCA plot
   showDownloadButton$norm_pca <- FALSE
   output$norm_pca <- renderPlot({
@@ -827,7 +1043,6 @@ server <- function(input, output, session) {
              height = input$plot_height_norm_pca, dpi = 300, device = input$filetype_norm_pca)
     }
   )
-  
   
   #output for description of normalization methods
   observeEvent(input$help_norm, {
@@ -857,8 +1072,7 @@ server <- function(input, output, session) {
   })
   
   output$downloadButtonUI <- renderUI({
-    req(normalized_counts(), showDownloadButton$norm_counts)  
-    print('DEBUG: Download button updated!!')
+    req(normalized_counts(), showDownloadButton$norm_counts)
     downloadButton("download_norm_counts", "Download Normalized Counts")
   })
   
@@ -936,6 +1150,29 @@ server <- function(input, output, session) {
     
   
   #--------------------------------DE-------------------------------------------
+  #update design formula is ruvseq normalization is done
+  default_formula <- "~ batch + condition"
+  observeEvent(input$ruvseq, {
+    req(input$ruv_k)
+    
+    if (isTRUE(input$ruvseq) && input$ruv_k > 0) {
+      w_terms <- paste0("W_", seq_len(input$ruv_k))
+      new_formula <- paste("~", paste(c(w_terms, "condition"), collapse = " + "))
+      
+      updateTextInput(
+        session,
+        "design_formula",
+        value = new_formula
+      )
+    } else {
+      # Reset to default when RUV is turned off
+      updateTextInput(
+        session,
+        "design_formula",
+        value = default_formula
+      )
+    }
+  })
   #set reference for comparisons
   debounced_formula <- debounce(reactive(input$design_formula), 3000)
   
@@ -946,7 +1183,15 @@ server <- function(input, output, session) {
     factor_names <- all.vars(design)
     
     #check if all factor names are present in colData
-    missing_factors <- setdiff(factor_names, colnames(filtered_metadata()))
+    #missing_factors <- setdiff(factor_names, colnames(filtered_metadata()))
+    
+    if (isTRUE(input$ruvseq) && !is.null(input$ruv_k) && input$ruv_k > 0) {
+      w_terms <- paste0("W_", seq_len(input$ruv_k))
+      non_w_factors <- setdiff(factor_names, w_terms)
+      missing_factors <- setdiff(non_w_factors, colnames(filtered_metadata()))
+    } else {
+      missing_factors <- setdiff(factor_names, colnames(filtered_metadata()))
+    }
     
     if (length(missing_factors) > 0){
       msg = paste("The following factors are missing in the metadata: ", paste(missing_factors, collapse = ','), ". Please upload the file containing all the desired columns / select all required columns from the `Samples Tab`.")
@@ -991,11 +1236,22 @@ server <- function(input, output, session) {
   prep_dds <- reactive({
     withProgress(message = "Preparing DESeq2 dataset...", value = 0, {
       set.seed(627)
-      req(filtered_counts_sub(), get_counts_matrix(), filtered_metadata(), input$design_formula, input$filter_slider, input$selected_factor)
+      req(input$design_formula, input$filter_slider, input$selected_factor)
       
       incProgress(0.2, detail = "Loading counts matrix and metadata...")
-      counts_matrix <- get_counts_matrix()
-      metadata_subset <- filtered_metadata()
+      
+      #use set1_ruv if ruvseq was performed, else filtered counts
+      if (isTRUE(input$ruvseq)) {
+        req(run_ruvseq())
+        set1_ruv <- run_ruvseq()
+        counts_matrix <- counts(set1_ruv)
+        metadata_subset <- pData(set1_ruv)
+      } else {
+        req(filtered_counts_sub(), get_counts_matrix(), filtered_metadata())
+        counts_matrix <- get_counts_matrix()
+        metadata_subset <- filtered_metadata()
+      }
+      
       design_formula = as.formula(input$design_formula)
       
       dds <- DESeqDataSetFromMatrix(countData = counts_matrix,
@@ -1037,33 +1293,37 @@ server <- function(input, output, session) {
       
       
       #estimate size factors 
-      if (input$ercc_used == FALSE) {
-        print("Not using ERCC spike in genes as control genes..")
-        #check which genes to use to estimate size factors
-        if (input$use_genes_dds == "use_all") {
-          print("Using all genes (including ERCC genes) for DESeq2 analysis.")
-          dds <- estimateSizeFactors(dds)
-        } else if (input$use_genes_dds == "use_wo_ercc") {
-          print("Excluding ERCC spike-in genes from DESeq2 analysis.")
-          dds <- dds[!grepl("^ERCC", rownames(dds)), ]
-          #check if filtering is done correctly
-          print(any(grepl("^ERCC", rownames(dds))))
-          print(sum(grepl("^ERCC", rownames(dds))))
-          dds <- estimateSizeFactors(dds)
+      if (!isTRUE(input$ruvseq)) {
+        if (input$ercc_used == FALSE) {
+          print("Not using ERCC spike in genes as control genes..")
+          #check which genes to use to estimate size factors
+          if (input$use_genes_dds == "use_all") {
+            print("Using all genes (including ERCC genes) for DESeq2 analysis.")
+            dds <- estimateSizeFactors(dds)
+          } else if (input$use_genes_dds == "use_wo_ercc") {
+            print("Excluding ERCC spike-in genes from DESeq2 analysis.")
+            dds <- dds[!grepl("^ERCC", rownames(dds)), ]
+            #check if filtering is done correctly
+            print(any(grepl("^ERCC", rownames(dds))))
+            print(sum(grepl("^ERCC", rownames(dds))))
+            dds <- estimateSizeFactors(dds)
+          }
+        } else {
+          print("Using ERCC spike in genes as control genes to calculate the size factors..")
+          ercc_genes <- rownames(counts_matrix)[grepl("ERCC", rownames(counts_matrix))]
+          if (length(ercc_genes) == 0) {
+            showNotification("No ercc genes found in the counts matrix.", type='error')
+            return(NULL)
+          }
+          #create a logical vector for controlGenes - estimateSizeFactors 
+          is_ercc <- rownames(dds) %in% ercc_genes
+          print(sum(rownames(dds) %in% ercc_genes))
+          dds <- estimateSizeFactors(dds, controlGenes = is_ercc)
         }
       } else {
-        print("Using ERCC spike in genes as control genes to calculate the size factors..")
-        ercc_genes <- rownames(counts_matrix)[grepl("ERCC", rownames(counts_matrix))]
-        if (length(ercc_genes) == 0) {
-          showNotification("No ercc genes found in the counts matrix.", type='error')
-          return(NULL)
-        }
-        #create a logical vector for controlGenes - estimateSizeFactors 
-        is_ercc <- rownames(dds) %in% ercc_genes
-        print(sum(rownames(dds) %in% ercc_genes))
-        dds <- estimateSizeFactors(dds, controlGenes = is_ercc)
+        dds <- estimateSizeFactors(dds)
       }
-      
+ 
       incProgress(1, detail = "Estimating dispersions...")
       #estimate dispersions
       print('Estimating dispersions...')
@@ -1203,6 +1463,18 @@ server <- function(input, output, session) {
     res <- deg_results()
     ma_plot <- generate_MAPlot(res, paste('MA plot -', input$selected_factor, '-', input$contrast1, 'vs', input$contrast2))
     return(ma_plot)
+  })
+  
+  #show error if trying to run DESeq2 before RUVseq, when RUVSeq is selected
+  observeEvent(input$run_deseq2, {
+    if (isTRUE(input$ruvseq) && input$ruv_norm == 0) {
+      showModal(modalDialog(
+        title = "Normalization required",
+        "You have selected RUVSeq to normalize the data, but haven't clicked the `Normalize - RUVSeq` button yet. 
+        Please do so before running DESeq2.",
+        easyClose = TRUE, footer = modalButton("OK")
+      ))
+    }
   })
   
   #----------------------------Output-------------------------------------------

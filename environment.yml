@@ -8,6 +8,7 @@ dependencies:
   - r-tidyverse
   - r-readxl
   - r-ggplot2
+  - r-ggrepel
   - bioconductor-deseq2
   - bioconductor-annotationdbi
   - bioconductor-org.hs.eg.db
@@ -32,3 +33,5 @@ dependencies:
   - r-shinycssloaders
   - r-shinywidgets
   - r-msigdbr
+  - bioconductor-ruvseq
+  - r-shinyjs

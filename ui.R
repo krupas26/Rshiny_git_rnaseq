@@ -7,6 +7,11 @@
 #
 source('functions.R')
 
+required_ui_packages <- c("shiny", "bslib", "readxl", "plotly", "ggplot2", 
+                          "colourpicker", "RColorBrewer", "DT", "igraph", 
+                          "shinycssloaders", "shinyWidgets", "shinyjs")
+install_and_load(required_ui_packages)
+
 #-----------------------------Libraries-----------------------------------------
 #import necessary libraries
 library(shiny)
@@ -21,11 +26,6 @@ library(igraph)
 library(shinycssloaders)
 library(shinyWidgets)
 library(shinyjs)
-
-required_ui_packages <- c("shiny", "bslib", "readxl", "plotly", "ggplot2", 
-                          "colourpicker", "RColorBrewer", "DT", "igraph", 
-                          "shinycssloaders", "shinyWidgets")
-install_and_load(required_ui_packages)
 
 #----------
 bs_theme_custom <- bs_theme(
@@ -170,6 +170,10 @@ ui <- fluidPage(
                               
                               #select samples for analysis
                               uiOutput("sample_selector"),
+                              br(), br(), 
+                              
+                              #ui for RUVseq
+                              uiOutput("ruvseq_ui")
                             ),
                             
                             #main panel
@@ -188,7 +192,20 @@ ui <- fluidPage(
                                                               br(),
                                                               withSpinner(plotly::plotlyOutput("sample_distribution_boxplot", height="700px"), type = 4),
                                                               uiOutput('downloadButton_sampleDist'),
-                                                              br()
+                                                              br(),
+                                                              fluidRow(
+                                                                column(6,
+                                                                       withSpinner(plotOutput("rle_before_ruv", height="700px"), type=4),
+                                                                        uiOutput('downloadButton_rle_before_ruv')
+                                                                       ),
+                                                                column(6,
+                                                                      withSpinner(plotOutput("rle_after_ruv", height="700px"), type=4),
+                                                                      uiOutput('downloadButton_rle_after_ruv')
+                                                                )),
+                                                                fluidRow(column(12,
+                                                                                plotOutput('ruv_legend', height="100px")))
+                                                             # )
+                                                              
                                                               ),
                                                      tabPanel("Heatmap", "Please wait for a few seconds for the plot to load...", 
                                                               withSpinner(plotOutput("dist_heatmap", height="700px"), type = 5), 
@@ -218,13 +235,21 @@ ui <- fluidPage(
                                                                 mainPanel(plotOutput("pca_plot", height="900px", width="900px"),
                                                                           uiOutput('downloadButton_pca_plot'), #)
                                                                           br(), br(),
+                                                                          plotOutput("pca_before_ruv", height="900px", width ="900px"),
+                                                                          uiOutput('downloadButton_pca_before_ruv'),
+                                                                          br(), br(),
                                                                           plotOutput("deseq2_pcaPlot", height="900px", width="900px"),
-                                                                          uiOutput('downloadButton_deseq2_pcaPlot'))
+                                                                          uiOutput('downloadButton_deseq2_pcaPlot') )
                                                               )),
-                                                     tabPanel("Normalized Counts PCA", "This PCA is generated using DESeq2 normalized counts. 
-                                                              Please wait for a few seconds for the plot to load...", 
-                                                              withSpinner(plotOutput("norm_pca", height="900px", width="1100px")),
-                                                              uiOutput('downloadButton_norm_pca'))
+                                                     tabPanel("Normalized Counts PCA", "Please wait for a few seconds for the plots to load...", 
+                                                              div(
+                                                                p("This PCA is generated after RUVseq ERCC normalization."),
+                                                                withSpinner(plotOutput("norm_pca_after_ruv", height="900px", width="1100px")),
+                                                                uiOutput('downloadButton_norm_pca_after_ruv'),
+                                                                p("This PCA is generated using DESeq2 normalized counts."),
+                                                                withSpinner(plotOutput("norm_pca", height="900px", width="1100px")),
+                                                                uiOutput('downloadButton_norm_pca')
+                                                              ))
                                          )),
                                 tabPanel("Normalized Counts",
                                          sidebarLayout(
@@ -299,9 +324,12 @@ ui <- fluidPage(
                               #set reference for comparisons
                               uiOutput("select_ref"),
                               #check if ercc spike in was used
-                              checkboxInput("ercc_used", "Include ERCC spike in analysis?", value = TRUE),
+                              conditionalPanel(
+                                condition = "input.ruvseq == false",
+                                checkboxInput("ercc_used", "Include ERCC spike in analysis?", value = FALSE)
+                              ),
                               #
-                              conditionalPanel(condition = "input.ercc_used == false",
+                              conditionalPanel(condition = "input.ruvseq == false && input.ercc_used == false",
                                                radioButtons("use_genes_dds", "Which genes to use in DESeq2?",
                                                             choices = c("Use all genes (including ERCC spike-in genes)?" = "use_all",
                                                                         "Use genes (excluding ERCC spike-in genes)?" = "use_wo_ercc"),

@@ -14,7 +14,7 @@ install_and_load <- function(packages) {
     }
     library(pkg, character.only = TRUE)
   }
-}
+ }
 
 #---- Samples ---
 #function to plot the histogram
@@ -156,6 +156,22 @@ plot_sample_distributions <- function(counts_matrix, plotly=FALSE) {
   }
 }
 
+#function to make RUVSeq - RLE boxplots
+make_rlePlot <- function(data, metadata, condition) {
+  #color mapping 
+  sample_conditions <- metadata$condition
+  unique_conditions <- unique(sample_conditions)
+  colors <- brewer.pal(max(3, length(unique_conditions)), "Set2")
+  color_map <- setNames(colors[1:length(unique_conditions)], unique_conditions)
+  sample_colors <- color_map[sample_conditions]
+
+  rle_plot <- EDASeq::plotRLE(data, outline=FALSE, ylim = c(-1,1), col= sample_colors)
+  legend("topright", legend = unique_conditions, fill = color_map[unique_conditions],
+         border = NA, bty = "n", cex = 1.5)
+  
+  return(rle_plot)
+}
+
 #function to make a sample-to-sample heatmap
 make_distHeatmap <- function(vsd, condition) {
   #calculate sample distances
@@ -164,9 +180,10 @@ make_distHeatmap <- function(vsd, condition) {
   sample_distmat <- as.matrix(sample_dist)
   #set the rownames and colnames
   rownames(sample_distmat) <- condition
-  colnames(sample_distmat) <- vsd$sample_id
+  colnames(sample_distmat) <- colnames(vsd)
   #set the colors for the heatmap
-  colors <- colorRampPalette(rev(brewer.pal(9, "Blues")))(255)
+  colors <- colorRampPalette(rev(brewer.pal(20, "Blues")))(255)
+  
   #generate the heatmap
   heatmap_grab <- grid.grabExpr(
     pheatmap(sample_distmat,
@@ -196,7 +213,7 @@ make_mdsplot <- function(vsd, condition) {
   msd$condition <- factor(condition)
   mds <- ggplot(msd, aes(x=`1`, y=`2`)) +
     geom_point(aes(color=condition), size=3) +
-    geom_text(aes(label=sample_id), vjust = 1.5, color = "black", size = 4) +
+    geom_text(aes(label=colnames(vsd)), vjust = 1.5, color = "black", size = 4) +
     theme_classic() +
     ggtitle('MDS plot') + xlab('MDS 1') + ylab('MDS 2') +
     theme(plot.title = element_text(hjust = 0.5),
@@ -295,13 +312,27 @@ edit_plotPCA <- function(pca_data, metadata, condition, pc_x, pc_y) {
   print(pca_plot)
 }
 
+make_pca_ruv <- function(data, metadata, condition) {
+  #color mapping
+  sample_conditions <- metadata$condition
+  unique_conditions <- unique(sample_conditions)
+  colors <- brewer.pal(max(3, length(unique_conditions)), "Set2")
+  color_map <- setNames(colors[1:length(unique_conditions)], unique_conditions)
+  sample_colors <- color_map[sample_conditions]
+  
+  pca_plot <- EDASeq::plotPCA(data, col=sample_colors, cex=1.1)
+  legend("topright", legend = unique_conditions, fill = color_map[unique_conditions],
+         border = NA, bty = "n", cex = 1.5)
+  
+  return(pca_plot)
+}
+
 #function to generate ERCC dose response curve plot
 make_ercc_plot <- function(data, mix_type, ercc_plot_type, ercc_stats, plotly=FALSE){
   conc_column <- ifelse(mix_type == 'mix1', "transcript_molecules_mix1", "transcript_molecules_mix2")
   title <- paste("ERCC", mix_type, "Dose Response", ifelse(ercc_plot_type == "sample_wise_ercc", "(Sample-wise)",""))
   
   m1 <- ggplot(data, aes(x = log2(!!sym(conc_column)), y = log_fpkm)) +
-    geom_point(aes(color=sample_id, shape=subgroup), size=3, alpha=0.5) +
     geom_smooth(method = 'lm', se=TRUE, color='black', level=0.99) +
     geom_hline(yintercept = log2(1), linetype = "dotted") +
     annotate("text", x = 80, y = log2(1), label = "1 RPKM", hjust = -0.5, vjust = 1.5) +
@@ -319,10 +350,16 @@ make_ercc_plot <- function(data, mix_type, ercc_plot_type, ercc_stats, plotly=FA
     m1 <- m1 + annotate("text", x = 70, y = 20, label = ercc_stats$annotate_text, hjust = 1, vjust = 1, size = 4, color = "black")
   }
   
-  if (plotly){
-    return(ggplotly(m1))
+  if (!plotly) {
+    m1 <- m1 + 
+      geom_point(aes(color=sample_id, shape=subgroup),size = 3, alpha = 0.6)
   } else {
-    return(m1)
+    m1 <- m1 +
+      geom_point(aes(color=sample_id, shape=subgroup,
+                     text = paste0(
+                            "ERCC ID: ", ercc_id
+      )),
+      size = 3, alpha = 0.6)
   }
 }
 
@@ -337,6 +374,9 @@ generate_volcano_plot <- function(res, l2fc, alpha, title, top_genes, plotly=FAL
     rownames_to_column(var = 'gene') %>%
     dplyr::filter(!is.na(log2FoldChange) & !is.na(padj)) %>%
     mutate(
+      #set the padj == 0 values to a very small number to avoid Inf -log10(padj)
+      padj = ifelse(padj == 0, .Machine$double.xmin, padj),
+      #labels
       sig = case_when(
         padj < alpha & log2FoldChange > l2fc  ~ "Upregulated",
         padj < alpha & log2FoldChange < -l2fc ~ "Downregulated",
@@ -377,9 +417,8 @@ generate_volcano_plot <- function(res, l2fc, alpha, title, top_genes, plotly=FAL
     geom_point(aes(color=DEG_label)) +
     labs(x = "log2 Fold Change", y = "- log10 (padj)", title = title) +
     theme_classic() +
-    geom_hline(yintercept = -log10(alpha), linetype = 'dashed', color='grey40') +
-    geom_vline(xintercept = l2fc, linetype = "dashed", color = "grey40") +
-    geom_vline(xintercept = -l2fc, linetype = "dashed", color = "grey40") + 
+    geom_hline(yintercept = -log10(alpha), linetype = 'dashed', color='grey46', linewidth = 0.6) +
+    geom_vline(xintercept = c(-l2fc, l2fc), linetype = "dashed", color = "grey46", linewidth = 0.6)
     theme(plot.title = element_text(hjust=0.5),
           text = element_text(size = 15))
   
@@ -405,7 +444,7 @@ generate_volcano_plot <- function(res, l2fc, alpha, title, top_genes, plotly=FAL
           list(
             x = top_upreg$log2FoldChange[i], y = -log10(top_upreg$padj[i]),
             text = top_upreg$symbol[i], xref = "x", yref = "y", showarrow = TRUE, arrowhead = 2, ax = ifelse(i %% 2 == 0, 20, -20),
-            ay = ifelse(i %% 2 == 0, -40, 40), font = list(size = 10, color = "grey70")
+            ay = ifelse(i %% 2 == 0, -40, 40), yanchor="bottom", font = list(size = 10, color = "grey70")
           )
         ))
       }
@@ -414,12 +453,12 @@ generate_volcano_plot <- function(res, l2fc, alpha, title, top_genes, plotly=FAL
           list(
             x = top_downreg$log2FoldChange[i], y = -log10(top_downreg$padj[i]),
             text = top_downreg$symbol[i], xref = "x", yref = "y", showarrow = TRUE, arrowhead = 2, ax = ifelse(i %% 2 == 0, 20, -20),
-            ay = ifelse(i %% 2 == 0, -40, 40), font = list(size = 12, color = "grey70")
+            ay = ifelse(i %% 2 == 0, -40, 40), yanchor="bottom", font = list(size = 12, color = "grey70")
           )
         ))
       }
-      vp <- vp %>% layout(annotations = annotations)
-    }
+      vp <- vp %>% layout(annotations = annotations) 
+     }
 
     #return the plot
     return(vp)
@@ -481,8 +520,10 @@ prepare_ercc_info <- function(ercc_file_path, dilution_factor) {
   ercc_info <- ercc_info %>%
     mutate(adj_conc_mix1 = `concentration_in_mix_1_(attomoles/ul)`*dilution_factor,
            adj_conc_mix2 = `concentration_in_mix_2_(attomoles/ul)`*dilution_factor,
-           transcript_molecules_mix1 = `adj_conc_mix1`*6.02214179*10^23,
-           transcript_molecules_mix2 = `adj_conc_mix2`*6.02214179*10^23)
+          transcript_molecules_mix1 = `adj_conc_mix1`*6.02214179*10^23,
+          transcript_molecules_mix2 = `adj_conc_mix2`*6.02214179*10^23)
+          #transcript_molecules_mix1 = `adj_conc_mix1`*6.02214179*10^5,
+          #transcript_molecules_mix2 = `adj_conc_mix2`*6.02214179*10^5)
   
   head(ercc_info)
   return(ercc_info)
