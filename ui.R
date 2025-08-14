@@ -60,13 +60,13 @@ ui <- fluidPage(
       }
     "))),
   
-    div(class = "title-container", 
-        h4("RNA-Seq Analysis", class = "title-text"),     
-        img(src = "rna_logo.png", class = "title-img") 
-    ),
-
+  div(class = "title-container", 
+      h4("RNA-Seq Analysis", class = "title-text"),     
+      img(src = "rna_logo.png", class = "title-img") 
+  ),
+  
   p("Developed by: Krupa Sampat"),
-
+  
   #------------------------------Tabs-------------------------------------------
   #Nested Tabs
   navbarPage("Hi!",
@@ -91,21 +91,22 @@ ui <- fluidPage(
                      tags$li("The 'DE Analysis' tab allows for differential expression analysis using `DESeq2` package."),
                      tags$li("In the 'Functional Analysis' tab, perform gene ontology and pathway analysis."),
                      tags$li("The 'GSEA' tab is to perform the gene set enrichment analysis using `fgsea` package.")
-                  )),
+                   )),
                    br(), br(),
                    h5("Citations:"),
                    tags$div(tags$ul(
+                     tags$li("RUVSeq (v1.36.0): Risso D, Ngai J, Speed T, Dudoit S (2014). “Normalization of RNA-seq data using factor analysis of control genes or samples.” Nature Biotechnology, 32(9), 896–902."),
                      tags$li("DESeq2 (v1.42.0): Love, M.I., Huber, W., Anders, S. Moderated estimation of fold change and dispersion for RNA-seq data with DESeq2 Genome Biology 15(12):550 (2014)"),
                      tags$li("ClusterProfiler (v4.10.0): T Wu, E Hu, S Xu, M Chen, P Guo, Z Dai, T Feng, L Zhou, W Tang, L Zhan, X Fu, S Liu, X Bo, and G Yu. clusterProfiler 4.0: A
                      universal enrichment tool for interpreting omics data. The Innovation. 2021, 2(3):100141"),
                      tags$li("fGsea (v1.28.0), G. Korotkevich, V. Sukhov, A. Sergushichev. Fast gene set enrichment analysis. bioRxiv (2019), doi:10.1101/060012")
-                  ))
-                ),
-                column(
-                  width = 4,
-                  align ='right',
-                  tags$img(src="rnaseq_image.png", height = '500px', width = '500px')
-                ))
+                   ))
+                 ),
+                 column(
+                   width = 4,
+                   align ='right',
+                   tags$img(src="rnaseq_image.png", height = '500px', width = '500px')
+                 ))
              ),
              #------------------------------------------------------------------
              tabPanel("Analyze", icon = icon("wand-magic-sparkles"),
@@ -196,26 +197,26 @@ ui <- fluidPage(
                                                               fluidRow(
                                                                 column(6,
                                                                        withSpinner(plotOutput("rle_before_ruv", height="700px"), type=4),
-                                                                        uiOutput('downloadButton_rle_before_ruv')
-                                                                       ),
+                                                                       uiOutput('downloadButton_rle_before_ruv')
+                                                                ),
                                                                 column(6,
-                                                                      withSpinner(plotOutput("rle_after_ruv", height="700px"), type=4),
-                                                                      uiOutput('downloadButton_rle_after_ruv')
+                                                                       withSpinner(plotOutput("rle_after_ruv", height="700px"), type=4),
+                                                                       uiOutput('downloadButton_rle_after_ruv')
                                                                 )),
-                                                                fluidRow(column(12,
-                                                                                plotOutput('ruv_legend', height="100px")))
-                                                             # )
+                                                              fluidRow(column(12,
+                                                                              plotOutput('ruv_legend', height="100px")))
+                                                              # )
                                                               
-                                                              ),
-                                                     tabPanel("Heatmap", "Please wait for a few seconds for the plot to load...", 
-                                                              withSpinner(plotOutput("dist_heatmap", height="700px"), type = 5), 
-                                                              br(), uiOutput('downloadButton_dist_heatmap'), br()
-                                                              ), 
-                                                     #withSpinner(plotOutput("gene_clust_heatmap"))),
-                                                     tabPanel("Multi-dimensional Scaling (MDS) Plot", "Please wait for a few seconds for the plot to load...", 
-                                                              withSpinner(plotOutput("mds_plot")),
-                                                              uiOutput('downloadButton_mds_plot')
-                                                              ))),
+                                         ),
+                                         tabPanel("Heatmap", "Please wait for a few seconds for the plot to load...", 
+                                                  withSpinner(plotOutput("dist_heatmap", height="700px"), type = 5), 
+                                                  br(), uiOutput('downloadButton_dist_heatmap'), br()
+                                         ), 
+                                         #withSpinner(plotOutput("gene_clust_heatmap"))),
+                                         tabPanel("Multi-dimensional Scaling (MDS) Plot", "Please wait for a few seconds for the plot to load...", 
+                                                  withSpinner(plotOutput("mds_plot")),
+                                                  uiOutput('downloadButton_mds_plot')
+                                         ))),
                                 tabPanel("Principal Component Analysis (PCA)", 
                                          tabsetPanel(tabPanel("PCA", "Select the PCs to plot and click the 'Plot PCA' button. 
                                           Please wait for a few seconds for the plot to load...",
@@ -229,8 +230,8 @@ ui <- fluidPage(
                                                                   br(),
                                                                   actionButton("plot_pca", "Plot PCA"),
                                                                   br(), br(), #),
-                                                                p("To generate PCA using `plotPCA()` function from DESeq2: "),
-                                                                actionButton("deseq2_pca","Plot PCA (DESeq2)")),
+                                                                  p("To generate PCA using `plotPCA()` function from DESeq2: "),
+                                                                  actionButton("deseq2_pca","Plot PCA (DESeq2)")),
                                                                 
                                                                 mainPanel(plotOutput("pca_plot", height="900px", width="900px"),
                                                                           uiOutput('downloadButton_pca_plot'), #)
@@ -283,7 +284,7 @@ ui <- fluidPage(
                                                           choices = c("Mix 1" = 'mix1', "Mix 2" = 'mix2'), selected = 'mix1'),
                                              br(),
                                              actionButton("generate_ercc_plot", "Analyze ERCC spike ins"),
-                                             ),
+                                           ),
                                            mainPanel(
                                              plotly::plotlyOutput("ercc_plot", width="1000px", height="900px"), 
                                              br(),
@@ -357,9 +358,9 @@ ui <- fluidPage(
                                                           choices = c(0.05, 0.01), selected = 0.01),
                                              #select l2fc value
                                              #sliderInput("fc_slider", "Select the log2 fold change threshold (for getting significant DEGs): ", 
-                                            #             min=0, max=5, step = 0.5, value = 1),
-                                            numericInput("fc_cutoff", "Input the log2 fold change threshold (for getting significant DEGs):",
-                                                         value=1, step = 0.001),
+                                             #             min=0, max=5, step = 0.5, value = 1),
+                                             numericInput("fc_cutoff", "Input the log2 fold change threshold (for getting significant DEGs):",
+                                                          value=1, step = 0.001),
                                              #select conditions/contrasts to compare
                                              p("Select the 'contrasts'/comparisons to be used for generating results. 
                             The order of the contrasts changes the interpretability of results."),
@@ -391,10 +392,10 @@ ui <- fluidPage(
                                              condition = 'input.vol_plot > 0',
                                              withSpinner(plotlyOutput("volcano_plot", height = "900px", width = "1200px"), type=5)), 
                                            br(), 
-                                                   uiOutput('downloadButton_vp'), br(),
-                                                   #p("MA plot"),
-                                                   plotOutput('ma_plot', height = "700px"),
-                                                   uiOutput('downloadButton_ma_plot'))
+                                           uiOutput('downloadButton_vp'), br(),
+                                           #p("MA plot"),
+                                           plotOutput('ma_plot', height = "700px"),
+                                           uiOutput('downloadButton_ma_plot'))
                                 ),
                                 tabPanel("Significant Gene Lists", p("Signficant Up-Regulated Genes"), dataTableOutput("up_regTable"),
                                          br(), br(),
@@ -414,7 +415,8 @@ ui <- fluidPage(
                               conditionalPanel(
                                 condition = 'input.upload_geneLists == true',
                                 fileInput('genelist_file', "Please load a file containing genes for functional analysis.", accept = c(".csv", ".txt", ".xlsx")),
-                                p("The gene list should contain a column with Ensembl ids and another with Gene symbols.")
+                                p("The gene list should contain a column with Ensembl ids and another with Gene symbols.
+                                  The script assumes that the first column is the Geneid. Please remove any column-names.")
                               ),
                               #or use pre-generated genelists
                               checkboxInput('generated_geneLists', 'Use the Gene lists generated through `DE analysis` tab? (only the significant genes will be used for this)', value = FALSE),
@@ -439,12 +441,12 @@ ui <- fluidPage(
                             ),
                             #main panel
                             mainPanel( uiOutput('func_plots_ui')
-                              #tabsetPanel(
-                                #tabPanel("Plot", "Please wait for the analysis to run and the plots to load..", withSpinner(plotOutput("func_plots", height = '2500px'))),
-                                #tabPanel("Plots", "Please wait for the analysis to complete and the plots to load..",
-                                        # uiOutput('func_plots_ui')),
-                                #tabPanel("Table", withSpinner(uiOutput('dynamic_func_tabs'))) #dataTableOutput("func_table"))
-                              #)
+                                       #tabsetPanel(
+                                       #tabPanel("Plot", "Please wait for the analysis to run and the plots to load..", withSpinner(plotOutput("func_plots", height = '2500px'))),
+                                       #tabPanel("Plots", "Please wait for the analysis to complete and the plots to load..",
+                                       # uiOutput('func_plots_ui')),
+                                       #tabPanel("Table", withSpinner(uiOutput('dynamic_func_tabs'))) #dataTableOutput("func_table"))
+                                       #)
                             )
                           )),
                         
@@ -493,7 +495,8 @@ ui <- fluidPage(
                                          withSpinner(plotOutput("gsea_plot"))),
                                 tabPanel("Table", 
                                          actionBttn("help_gsea_res", label = "", style = "fill", icon = icon("question-circle")), 
-                                         withSpinner(dataTableOutput('gsea_table')), uiOutput("downloadButton_gseaRes")) 
+                                         withSpinner(dataTableOutput('gsea_table')), uiOutput("downloadButton_gseaRes"), br(), br(),
+                                         withSpinner(dataTableOutput('gsea_table_entire')), uiOutput("downloadButton_gseaRes_entire")) 
                               )
                             )
                           )
