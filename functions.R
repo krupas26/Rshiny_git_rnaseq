@@ -14,7 +14,7 @@ install_and_load <- function(packages) {
     }
     library(pkg, character.only = TRUE)
   }
- }
+}
 
 #---- Samples ---
 #function to plot the histogram
@@ -152,7 +152,7 @@ plot_sample_distributions <- function(counts_matrix, plotly=FALSE) {
   if (plotly) {
     return(ggplotly(sample_dist_plot))
   } else {
-  return(sample_dist_plot)
+    return(sample_dist_plot)
   }
 }
 
@@ -164,8 +164,20 @@ make_rlePlot <- function(data, metadata, condition) {
   colors <- brewer.pal(max(3, length(unique_conditions)), "Set2")
   color_map <- setNames(colors[1:length(unique_conditions)], unique_conditions)
   sample_colors <- color_map[sample_conditions]
-
-  rle_plot <- EDASeq::plotRLE(data, outline=FALSE, ylim = c(-1,1), col= sample_colors)
+  
+  #calulate ylim range
+  log_expr <- log2(exprs(data) + 1)
+  medians <- apply(log_expr, 1, median, na.rm = TRUE)
+  rle_values <- sweep(log_expr, 1, medians, FUN = "-")
+  
+  #trim extremes: use 1st and 99th percentiles for ylim
+  lower <- quantile(rle_values, 0.01, na.rm = TRUE)
+  upper <- quantile(rle_values, 0.99, na.rm = TRUE)
+  ylim_range <- c(max(-3, lower), min(3, upper))
+  
+  rle_plot <- EDASeq::plotRLE(data, outline=FALSE, ylim = ylim_range, col= sample_colors,
+                              main = "Relative Log Expression (RLE) Plot",
+                              ylab = "RLE")
   legend("topright", legend = unique_conditions, fill = color_map[unique_conditions],
          border = NA, bty = "n", cex = 1.5)
   
@@ -357,18 +369,18 @@ make_ercc_plot <- function(data, mix_type, ercc_plot_type, ercc_stats, plotly=FA
     m1 <- m1 +
       geom_point(aes(color=sample_id, shape=subgroup,
                      text = paste0(
-                            "ERCC ID: ", ercc_id
-      )),
-      size = 3, alpha = 0.6)
+                       "ERCC ID: ", ercc_id
+                     )),
+                 size = 3, alpha = 0.6)
   }
 }
 
 #function to generate volcano plot
-generate_volcano_plot <- function(res, l2fc, alpha, title, top_genes, plotly=FALSE) {
+generate_volcano_plot <- function(res, l2fc, alpha, title, xlab, ylab, top_genes, plotly=FALSE) {
   #ensure l2fc and alpha are numeric
   alpha <- as.numeric(alpha)
   l2fc <- as.numeric(l2fc)
-
+  
   #convert the results obj to a dataframe
   labelled_res <- as.data.frame(res) %>%
     rownames_to_column(var = 'gene') %>%
@@ -383,23 +395,23 @@ generate_volcano_plot <- function(res, l2fc, alpha, title, top_genes, plotly=FAL
         TRUE                                  ~ "Not Significant"
       )
     )
-
+  
   #get the top up-regulated DEGs for plotting
   top_upreg <- labelled_res %>%
     filter(sig == "Upregulated") %>%
     arrange(padj, desc(log2FoldChange)) %>%
     slice_head(n = top_genes)
-
+  
   #get the top down-regulated DEGs for plotting
   top_downreg <- labelled_res %>%
     filter(sig == "Downregulated") %>%
     arrange(padj, log2FoldChange) %>%
     slice_head(n = top_genes)
-
+  
   label_all <- paste("padj <", alpha, "& abs(l2fc) >", l2fc)
   label_padj <- paste("padj <", alpha)
   label_l2fc <- paste("abs(l2fc) >", l2fc)
-
+  
   labelled_res <- labelled_res %>%
     mutate('DEG_label' = factor(case_when(
       padj < alpha & abs(log2FoldChange) > l2fc ~ label_all,
@@ -407,18 +419,18 @@ generate_volcano_plot <- function(res, l2fc, alpha, title, top_genes, plotly=FAL
       abs(log2FoldChange) > l2fc ~ label_l2fc,
       TRUE ~ "NS"
     ), levels = c(label_all, label_padj, label_l2fc, "NS")))
-
+  
   print(str(labelled_res))
-
+  
   #generate volcano plot
   vp <- ggplot(labelled_res, aes(x = log2FoldChange, y = -log10(padj),
                                  text = paste("Gene:", gene, "<br>Symbol:", symbol, "<br>log2FC:", round(log2FoldChange, 2),
                                               "<br>-log10(Padj):", round(-log10(padj), 2)))) +
     geom_point(aes(color=DEG_label)) +
-    labs(x = "log2 Fold Change", y = "- log10 (padj)", title = title) +
+    labs(x = xlab, y = ylab, title = title) +
     theme_classic() +
     geom_hline(yintercept = -log10(alpha), linetype = 'dashed', color='grey46', linewidth = 0.6) +
-    geom_vline(xintercept = c(-l2fc, l2fc), linetype = "dashed", color = "grey46", linewidth = 0.6)
+    geom_vline(xintercept = c(-l2fc, l2fc), linetype = "dashed", color = "grey46", linewidth = 0.6) +
     theme(plot.title = element_text(hjust=0.5),
           text = element_text(size = 15))
   
@@ -433,10 +445,10 @@ generate_volcano_plot <- function(res, l2fc, alpha, title, top_genes, plotly=FAL
     
   } else {
     vp <- ggplotly(vp, tooltip = "text")
-
+    
     vp <- vp %>%
       style(hoverlabel = list(bgcolor = "lightblue", font = list(color = "black", size = 12)))
-
+    
     if (top_genes > 0) {
       annotations <- list()
       for (i in 1:nrow(top_upreg)) {
@@ -457,9 +469,50 @@ generate_volcano_plot <- function(res, l2fc, alpha, title, top_genes, plotly=FAL
           )
         ))
       }
-      vp <- vp %>% layout(annotations = annotations) 
-     }
-
+      vp <- vp %>% layout(annotations = annotations)
+      # if (top_genes > 0) {
+      #   annotations <- list()
+      #   
+      #   for (i in 1:nrow(top_upreg)) {
+      #     annotations <- c(annotations, list(
+      #       list(
+      #         x = top_upreg$log2FoldChange[i],
+      #         y = -log10(top_upreg$padj[i]),
+      #         text = top_upreg$symbol[i],
+      #         xref = "x", yref = "y",
+      #         showarrow = TRUE,
+      #         arrowhead = 2,
+      #         standoff = 5,
+      #         font = list(size = 10, color = "grey20"),
+      #         arrowcolor = "grey60",
+      #         bgcolor = "white",
+      #         bordercolor = "grey80"
+      #       )
+      #     ))
+      #   }
+      #   
+      #   for (i in 1:nrow(top_downreg)) {
+      #     annotations <- c(annotations, list(
+      #       list(
+      #         x = top_downreg$log2FoldChange[i],
+      #         y = -log10(top_downreg$padj[i]),
+      #         text = top_downreg$symbol[i],
+      #         xref = "x", yref = "y",
+      #         showarrow = TRUE,
+      #         arrowhead = 2,
+      #         standoff = 5,
+      #         font = list(size = 10, color = "grey20"),
+      #         arrowcolor = "grey60",
+      #         bgcolor = "white",
+      #         bordercolor = "grey80"
+      #       )
+      #     ))
+      #   }
+      #   
+      #   vp <- vp %>% layout(annotations = annotations)
+      # 
+    }
+    
     #return the plot
     return(vp)
   }
@@ -520,10 +573,10 @@ prepare_ercc_info <- function(ercc_file_path, dilution_factor) {
   ercc_info <- ercc_info %>%
     mutate(adj_conc_mix1 = `concentration_in_mix_1_(attomoles/ul)`*dilution_factor,
            adj_conc_mix2 = `concentration_in_mix_2_(attomoles/ul)`*dilution_factor,
-          transcript_molecules_mix1 = `adj_conc_mix1`*6.02214179*10^23,
-          transcript_molecules_mix2 = `adj_conc_mix2`*6.02214179*10^23)
-          #transcript_molecules_mix1 = `adj_conc_mix1`*6.02214179*10^5,
-          #transcript_molecules_mix2 = `adj_conc_mix2`*6.02214179*10^5)
+           transcript_molecules_mix1 = `adj_conc_mix1`*6.02214179*10^23,
+           transcript_molecules_mix2 = `adj_conc_mix2`*6.02214179*10^23)
+  #transcript_molecules_mix1 = `adj_conc_mix1`*6.02214179*10^5,
+  #transcript_molecules_mix2 = `adj_conc_mix2`*6.02214179*10^5)
   
   head(ercc_info)
   return(ercc_info)
@@ -679,18 +732,18 @@ generate_func_plot <- function(enrich_results, plot_type, show_categories, font_
   
   generate_plot <- function(result, plot_type, show_categories) {
     if (!is.null(result) && nrow(as.data.frame(result)) > 0) {
-    #if (!is.null(result) || length(result@result) == 0) {
+      #if (!is.null(result) || length(result@result) == 0) {
       #font_size <- ifelse(is.null(font_size) || !is.numeric(font_size) || font_size <= 0, 12, font_size)
       
       if (plot_type == 'bar') {
         return(barplot(result, showCategory = show_categories)) #+
-                 #theme(text = element_text(size=font_size)))
+        #theme(text = element_text(size=font_size)))
       } else if (plot_type == 'dot') {
         return(dotplot(result, showCategory = show_categories))# +
-                 #theme(text = element_text(size=font_size)))
+        #theme(text = element_text(size=font_size)))
       } else if (plot_type == 'emap') {
         return(emapplot(pairwise_termsim(result), showCategory = show_categories)) # +
-                # theme(text = element_text(size=font_size)))
+        # theme(text = element_text(size=font_size)))
       }
     } else {
       showNotification("Result is NULL or empty, skipping plot generation..", type='warning')
