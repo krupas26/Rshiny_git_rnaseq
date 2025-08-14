@@ -425,7 +425,7 @@ server <- function(input, output, session) {
     print("RUV normalization triggered")
   })
   
-
+  
   #library size plot
   get_library_sizes <- reactive({
     req(get_counts_matrix())
@@ -463,7 +463,7 @@ server <- function(input, output, session) {
     
     return(pca_plot)
   })
-
+  
   #normalized counts PCA 
   generate_norm_pca <- reactive({
     req(filtered_metadata(), get_deseq2_norm_counts(), input$pc_x, input$pc_y, selected_condition_column())
@@ -516,17 +516,17 @@ server <- function(input, output, session) {
                                "CPM" = calculate_cpm(counts_sub[, -which(colnames(counts_sub) == "Geneid")]),
                                "FPKM" = calculate_fpkm(counts_sub[, -which(colnames(counts_sub) == "Geneid")], gene_lengths),
                                "TPM" = calculate_tpm(counts_sub[, -which(colnames(counts_sub) == "Geneid")], gene_lengths),
-                                "DESeq2" = {if (!deseq2_run()) {
-                                  showModal(modalDialog(title='Error', "Please run DESeq2 from the DE Analysis Tab first to display the DESeq2 normalized counts.", easyClose = TRUE, size='m'))
-                                  return(NULL)
-                                } else {
-                                  req(get_deseq2_norm_counts())
-                                  norm_counts_data <- get_deseq2_norm_counts()
-                                }
-                                }
+                               "DESeq2" = {if (!deseq2_run()) {
+                                 showModal(modalDialog(title='Error', "Please run DESeq2 from the DE Analysis Tab first to display the DESeq2 normalized counts.", easyClose = TRUE, size='m'))
+                                 return(NULL)
+                               } else {
+                                 req(get_deseq2_norm_counts())
+                                 norm_counts_data <- get_deseq2_norm_counts()
+                               }
+                               }
     )
     
-   
+    
     #round the normalized counts if user chooses to 
     if (input$round_normCounts) {
       norm_counts_data <- round(norm_counts_data, digits = input$round_digits)
@@ -554,7 +554,7 @@ server <- function(input, output, session) {
     normalized_counts(norm_counts_data)
     
     #update and display download button
-   isolate({showDownloadButton$norm_counts <- TRUE}) 
+    isolate({showDownloadButton$norm_counts <- TRUE}) 
   })
   
   #ERCC Spike in Analysis 
@@ -632,7 +632,7 @@ server <- function(input, output, session) {
     # Create download dropdown button
     output[[paste0("downloadButton_", plot_id)]] <- renderUI({
       req(showDownloadButton[[plot_id]])
- 
+      
       dropdownButton(
         inputId = dropdown_id,  # Assign an ID for JS control
         circle = FALSE,
@@ -662,7 +662,7 @@ server <- function(input, output, session) {
     return(list(download_id = download_id, filename_id = filename_id, filetype_id = filetype_id,
                 width_id = width_id, height_id = height_id))
   }
-
+  
   # #function to create a download handler for the plots
   createDownloadHandler_plots <- function(plot_id, plot_function, data_function, output, input, session, ids) {
     output[[ids$download_id]] <- downloadHandler(
@@ -674,11 +674,11 @@ server <- function(input, output, session) {
         
         #check if the function returns a static (ggplot) object 
         maybe_gg <- if (is.list(args)) do.call(plot_function, args) else plot_function(args, plotly = FALSE)
-  
+        
         if (inherits(maybe_gg, "ggplot")) {
           ggsave(file, maybe_gg, width = input[[ids$width_id]], height = input[[ids$height_id]], dpi = 300, units = "in", device   = input[[ids$filetype_id]])
-
-          #otherwise assume it�s base-graphics: open device, draw, close
+          
+          #otherwise assume it’s base‐graphics: open device, draw, close
         } else {
           w    <- input[[ids$width_id]]
           h    <- input[[ids$height_id]]
@@ -697,7 +697,7 @@ server <- function(input, output, session) {
       }
     )
   }
-
+  
   
   #----------------------------Output-------------------------------------------
   #output for `sample_selector`
@@ -721,6 +721,8 @@ server <- function(input, output, session) {
       checkboxInput("ruvseq", "Normalize data using RUVSeq?", value = TRUE),
       conditionalPanel(condition="input.ruvseq == true", 
                        div(
+                         #help for design for ruvseq
+                         actionButton("help_ruvseq", label = 'Help?', class="btn btn-info", icon = icon("question-circle")),
                          sliderInput("ruv_filter_slider", "Select the minimum number of counts required for a gene to be included in the analysis. Genes having total counts below this threshold will be filtered out.",
                                      min = 0, max = 100, value = 5, step = 5),
                          checkboxInput('ruv_filter_sample', "Include minimum no. of samples that contain the above threshold?", value = TRUE),
@@ -733,6 +735,25 @@ server <- function(input, output, session) {
                          actionButton("ruv_norm", "Normalize - RUVseq")
                        )))
     
+  })
+  
+  url_ruv <- a("RUVSeq Manual", href="https://bioconductor.org/packages/devel/bioc/vignettes/RUVSeq/inst/doc/RUVSeq.html", target="_blank", rel= "noopener noreferrer")
+  observeEvent(input$help_ruvseq, {
+    showModal(modalDialog(
+      title = "RUVSeq help:",
+      tagList(
+        p("RUVSeq (Remove Unwanted Variation from RNA-Seq data) is used to remove any technical variations or batch effects."),
+        p("It can use ERCC spike-in controls to estimate and remove technical variations from the RNA-seq data."),
+        br(),
+        p("`k` paramater: "),
+        p("`k` is the number of hidden factors of unwanted variation to remove"),
+        p("With ERCCs, a small k (often 1 or 2) is usually enough to adjust for technical effects without affecting true biological differences."),
+        br(),
+        p("Refer: ", url_ruv)
+      ),
+      easyClose = TRUE,
+      size = 'm'
+    ))
   })
   
   observeEvent(input$submit_samples, {
@@ -780,7 +801,12 @@ server <- function(input, output, session) {
   #output for filtered counts subset
   output$counts_subset <- renderDataTable({
     req(filtered_counts_sub())
-    counts_sub <- datatable(filtered_counts_sub(), options = list(paging=TRUE, scrollX=TRUE), 
+    filtered_counts_data <- filtered_counts_sub()
+    filtered_counts_data <- get_gene_symbols(filtered_counts_data)
+    filtered_counts_data <- filtered_counts_data[, c("Geneid", "symbol", setdiff(colnames(filtered_counts_data), c("Geneid", "symbol")))]
+    
+    print(head(filtered_counts_data))
+    counts_sub <- datatable(filtered_counts_data, options = list(paging=TRUE, scrollX=TRUE), 
                             caption = "Raw Counts Table for selected samples") 
     return(counts_sub)
   })
@@ -857,7 +883,7 @@ server <- function(input, output, session) {
   createDownloadHandler_plots("rle_before_ruv", make_rlePlot, 
                               data_function = function() {
                                 list(data = prepare_ruv_obj(), metadata = filtered_metadata(), condition = selected_condition_column()) 
-                                }, output, input, session, rle_before_ids)
+                              }, output, input, session, rle_before_ids)
   
   #output for `rle_after_ruv` boxplot
   showDownloadButton$rle_after_ruv <- FALSE
@@ -923,7 +949,7 @@ server <- function(input, output, session) {
                               data_function = function() {
                                 list(vsd = get_vsd_counts(), condition = filtered_metadata()[[selected_condition_column()]])
                               }, output, input, session, mds_plot_ids)
-
+  
   #output for PCA plot
   showDownloadButton$pca_plot <- FALSE
   observeEvent(input$plot_pca, {
@@ -943,7 +969,7 @@ server <- function(input, output, session) {
     }, content = function(file) {
       pca_plot <- generate_pca_plot()
       ggsave(filename = file, plot = pca_plot, width = input$plot_width_pca_plot,
-      height = input$plot_height_pca_plot, dpi = 300, device = input$filetype_pca_plot)
+             height = input$plot_height_pca_plot, dpi = 300, device = input$filetype_pca_plot)
     }
   )
   
@@ -1147,7 +1173,7 @@ server <- function(input, output, session) {
   #     hist(ercc_res$log2FoldChange, breaks=20, main="ERCC log2FC distribution", xlab="log2 Fold Change")
   #   })
   # })
-    
+  
   
   #--------------------------------DE-------------------------------------------
   #update design formula is ruvseq normalization is done
@@ -1323,7 +1349,7 @@ server <- function(input, output, session) {
       } else {
         dds <- estimateSizeFactors(dds)
       }
- 
+      
       incProgress(1, detail = "Estimating dispersions...")
       #estimate dispersions
       print('Estimating dispersions...')
@@ -1488,6 +1514,9 @@ server <- function(input, output, session) {
         p("If you want to use multiple columns, the order in which they are written MATTERS."),
         p("For example: design = ~ batch + condition"),
         p("Here, we measure the effect of the `condition` (treatment) while controlling for `batch` differences"),
+        p("When RUVSeq is used for normalization,
+          include the factors of unwanted variation (W) in the design formula."),
+        p("For instance, design = ~ W_1 + condition for k=1"),
         p("Refer: ", url)
       ),
       easyClose = TRUE,
@@ -1586,8 +1615,8 @@ server <- function(input, output, session) {
   #show download button for deg results
   output$downloadButton_degres <- renderUI({
     req(showDownloadButton$degres)
-      tagList(downloadButton('download_degres', "Download DEG results"),
-              downloadButton('download_sig_degs', "Download Significant DEGs table"))
+    tagList(downloadButton('download_degres', "Download DEG results"),
+            downloadButton('download_sig_degs', "Download Significant DEGs table"))
   })
   
   #download deg results
@@ -1609,17 +1638,20 @@ server <- function(input, output, session) {
     if (is.null(deg_results()) || nrow(deg_results()) == 0) {
       showNotification("Please generate DEG results first from the `Generate DEG Results & Summary` tab.", type='error', duration=NULL)
     } else {
-    output$volcano_plot <- renderPlotly({
-      req(input$vol_plot > 0, deg_results())
-      res <- deg_results()
-      top_genes <- ifelse(input$annotate_volcano, input$top_genes_cutoff, 0)
-      vp <- generate_volcano_plot(res, input$fc_cutoff, as.numeric(input$alpha_cutoff), 
-                                  title = paste('Volcano plot - ', input$selected_factor, "-", input$contrast1, "vs", input$contrast2), 
-                                  top_genes, plotly=TRUE)
-      showDownloadButton$vp <- TRUE
-      return(vp)
-    })
-  }
+      output$volcano_plot <- renderPlotly({
+        req(input$vol_plot > 0, deg_results())
+        res <- deg_results()
+        top_genes <- ifelse(input$annotate_volcano, input$top_genes_cutoff, 0)
+        xlab_text <- paste0("log<sub>2</sub>(Fold Change) [<b>", input$contrast1, " / ", input$contrast2, "</b>]")
+        ylab_text <- "−log<sub>10</sub>(Benjamini-Hochberg adjusted p-value)"
+        vp <- generate_volcano_plot(res, input$fc_cutoff, as.numeric(input$alpha_cutoff), 
+                                    title = paste('Volcano plot - ', input$selected_factor, "-", input$contrast1, "vs", input$contrast2), 
+                                    xlab = xlab_text, ylab = ylab_text,
+                                    top_genes, plotly=TRUE)
+        showDownloadButton$vp <- TRUE
+        return(vp)
+      })
+    }
   })
   
   output$downloadButton_vp <- renderUI({
@@ -1634,9 +1666,11 @@ server <- function(input, output, session) {
       req(deg_results())
       res <- deg_results()
       top_genes = ifelse(input$annotate_volcano, input$top_genes_cutoff, 0)
+      xlab_text <- bquote(log[2] * "(Fold Change) [" * .(input$contrast1) / .(input$contrast2) * "]")
+      ylab_text <- expression(-log[10]~(Benjamini-Hochberg~adjusted~p-value))
       vp <- generate_volcano_plot(res, input$fc_cutoff, input$alpha_cutoff,
-                                  title = paste('Volcano plot - ', input$selected_factor, "-", input$contrast1, "vs", input$contrast2), 
-                                  top_genes, plotly=FALSE)
+                                  title = "Volcano Plot", 
+                                  xlab = xlab_text, ylab = ylab_text, top_genes, plotly=FALSE)
       ggsave(filename = file, plot = vp, width = input$plot_width_vp,
              height = input$plot_height_vp, dpi = 300, device = input$filetype_vp)
     }
@@ -1734,26 +1768,34 @@ server <- function(input, output, session) {
     if (input$upload_geneLists) {
       req(input$genelist_file)
       #genelist_file <- input$genelist_file
-      file_ext <- tools::file_ext(input$genelist_file$name)
+      file_ext <- tolower(tools::file_ext(input$genelist_file$name))
       #using gene IDs 
       print("Using and extracting the 1st column (assuming gene IDs) from the file for further analysis..")
       geneList <- switch(file_ext,
-                         "csv" = read.csv(input$genelist_file$datapath, stringsAsFactors = FALSE)[,1],
+                         "csv" = read.csv(input$genelist_file$datapath, stringsAsFactors = FALSE, header = FALSE)[,1],
                          "xlsx" = read_excel(input$genelist_file$datapath)[,1],
-                         #"txt" = read.table(input$genelist_file$datapath, stringsAsFactors = FALSE)[[1]],
-                         read.table(input$genelist_file$datapath, header=FALSE, stringsAsFactors = FALSE)[,1],
-                         validate('Unsupported file type. Please upload a `.csv` or `.xlsx` file.'))
+                         "txt" = read.table(input$genelist_file$datapath, stringsAsFactors = FALSE, header = FALSE)[[1]],
+                         # read.table(input$genelist_file$datapath, header=FALSE, stringsAsFactors = FALSE)[,1],
+                         {
+                           showNotification("Unsupported file type. Please upload a .csv, .txt, or .xlsx file.", type = "error")
+                           validate('Unsupported file type. Please upload a `.csv` or `.xlsx` file.')#)
+                           NULL
+                         })
     } else if (input$generated_geneLists) {
       req(geneLIST_Up(), geneLIST_Down())
       geneList <- switch(input$geneList_to_use, 
                          "use_upregList" = geneLIST_Up()$genelist_UP$geneid,
-                         "use_downregList" = geneLIST_Down()$genelist_DOWN$geneid)
+                         "use_downregList" = geneLIST_Down()$genelist_DOWN$geneid,
+                         { showNotification("Please choose a gene list to use.", type = "error"); return(NULL) } )
     } else {
       showNotification("No gene list option selected. Please select one..", type='error')
       return(NULL)
     }
     
+    geneList <- sub("\\..*$", "", geneList)
+    
     print(head(geneList))
+    print(length(geneList))
     return(geneList)
   })
   
@@ -1839,7 +1881,7 @@ server <- function(input, output, session) {
                  br(),
                  p("Enrichment Table"),
                  dataTableOutput(paste0("table_", tab_name)))
-               )
+      )
     })
     
     do.call(tabsetPanel, tab_panels)
@@ -1876,7 +1918,7 @@ server <- function(input, output, session) {
           
           print(plot_list[[type]])  
           dev.off()
-          }
+        }
       )
     })
   })
@@ -1986,7 +2028,7 @@ server <- function(input, output, session) {
       
       incProgress(0.4, detail = "Preparing pathways for GSEA...")
       print("Pathways:")
-      print(head(pathways))
+      # print(head(pathways))
       
       incProgress(0.6, detail = "Running GSEA analysis...")
       #run fgsea
@@ -1999,6 +2041,17 @@ server <- function(input, output, session) {
       incProgress(1, detail = "GSEA analysis complete.")
       fgsea_results(fgsea_res)
     })
+  })
+  
+  all_pathways <- reactive({
+    req(fgsea_results())
+    fgsea_res <- fgsea_results()
+    fgsea_res_sorted <- fgsea_res[order(fgsea_res$NES, decreasing = TRUE), ]
+    
+    all_pathways_df <- as.data.frame(fgsea_res_sorted)
+    print(head(all_pathways_df))
+    
+    return(all_pathways_df)
   })
   
   sig_pathways <- reactive({
@@ -2053,6 +2106,16 @@ server <- function(input, output, session) {
   output$gsea_plot <- renderPlot({
     req(input$run_gsea, fgsea_results(), sig_pathways())
     significant_pathways <- sig_pathways()
+    
+    #handle empty plots
+    if (is.null(significant_pathways) || nrow(significant_pathways) == 0) {
+      showDownloadButton$gseaPlot <- FALSE
+      return(
+        ggplot() + theme_void() + annotate("text", x = 0, y = 0,
+                                           label = "No significantly enriched gene sets found",
+                                           size = 6)
+      )
+    }
     plot <- generate_gsea_plot(significant_pathways, input$top_cat)
     showDownloadButton$gseaPlot <- TRUE
     return(plot)
@@ -2102,14 +2165,14 @@ server <- function(input, output, session) {
     req(sig_pathways())
     fgsea_res_df <- as.data.frame(sig_pathways())
     fgsea_res_df <- datatable(fgsea_res_df, options = list(pageLength = 10, autoWidth = TRUE, scrollX=TRUE),
-                              caption = "GSEA results")
+                              caption = "GSEA results (Significant at p-adj < 0.05 pathways)")
     showDownloadButton$gseaRes <- TRUE
     return(fgsea_res_df)
   })
   
   output$downloadButton_gseaRes <- renderUI({
     req(showDownloadButton$gseaRes)
-      downloadButton("download_gseaRes", "Download GSEA Results")
+    downloadButton("download_gseaRes", "Download GSEA Results")
   })
   
   output$download_gseaRes <- create_download_handler(filename_prefix = reactive({paste0("GSEA_Results_", input$gsea_category, "_")}),
@@ -2124,5 +2187,34 @@ server <- function(input, output, session) {
                                                        })
                                                        return(df)
                                                      })
+  
+  #output for Entire gsea results table
+  showDownloadButton$gseaRes_entire <- FALSE
+  output$gsea_table_entire <- renderDataTable({
+    req(all_pathways())
+    all_pathways_df <- all_pathways()
+    all_pathways_df <- datatable(all_pathways_df, options = list(pageLength = 10, autoWidth = TRUE, scrollX = TRUE),
+                                 caption = "GSEA results (all pathways)")
+    showDownloadButton$gseaRes_entire <- TRUE
+    return(all_pathways_df)
+  })
+  
+  output$downloadButton_gseaRes_entire <- renderUI({
+    req(showDownloadButton$gseaRes_entire)
+    downloadButton("download_gseaRes_entire", "Download GSEA Results Table (Entire)")
+  })
+  
+  output$download_gseaRes_entire <- create_download_handler(filename_prefix = reactive({paste0("GSEA_Results_allPathways_", input$gsea_category, "_")}),
+                                                            data_function = all_pathways, data_prep = function(data){
+                                                              df <- as.data.frame(data)
+                                                              df[] <- lapply(df, function(col) {
+                                                                if(is.list(col)) {
+                                                                  return(sapply(col, toString))
+                                                                } else {
+                                                                  return (col)
+                                                                }
+                                                              })
+                                                              return(df)
+                                                            })
   
 }
